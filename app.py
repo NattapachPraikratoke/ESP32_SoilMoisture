@@ -27,8 +27,13 @@ def load_labels(path):
 labels = load_labels(LABELS_PATH)
 
 # ===============================
-# Load TFLite Interpreter
+# TensorFlow / TFLite Lazy Loader
 # ===============================
+interpreter = None
+input_details = None
+output_details = None
+INPUT_SIZE = None
+
 def load_interpreter():
     try:
         import tflite_runtime.interpreter as tflite
@@ -37,20 +42,29 @@ def load_interpreter():
         import tensorflow as tf
         return tf.lite.Interpreter
 
-Interpreter = load_interpreter()
-interpreter = Interpreter(model_path=MODEL_PATH)
-interpreter.allocate_tensors()
+def get_interpreter():
+    global interpreter, input_details, output_details, INPUT_SIZE
 
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
+    if interpreter is None:
+        Interpreter = load_interpreter()
+        interpreter = Interpreter(model_path=MODEL_PATH)
+        interpreter.allocate_tensors()
 
-INPUT_SIZE = input_details[0]["shape"][1]
+        input_details = interpreter.get_input_details()
+        output_details = interpreter.get_output_details()
+        INPUT_SIZE = input_details[0]["shape"][1]
+
+        print("✅ TFLite model loaded")
+        print("📐 Input size:", INPUT_SIZE)
+        print("🏷 Labels:", labels)
+
+    return interpreter
 
 # ===============================
 # Telegram Config
 # ===============================
-TELEGRAM_TOKEN = os.getenv("8323059048:AAH6K8q48-0wiF-aEnc0Tro0o2s49opVkRs")
-TELEGRAM_CHAT_ID = os.getenv("6423545257")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def thai_time():
     return (datetime.utcnow() + timedelta(hours=7)).strftime("%H:%M:%S")
@@ -72,7 +86,7 @@ def send_telegram_photo(photo_bytes, caption):
         files={
             "photo": ("image.jpg", photo_bytes, "image/jpeg")
         },
-        timeout=15
+        timeout=20
     )
 
     if response.status_code != 200:
@@ -87,8 +101,7 @@ def send_telegram_photo(photo_bytes, caption):
 def home():
     return jsonify({
         "status": "running",
-        "model": MODEL_PATH,
-        "input_size": INPUT_SIZE,
+        "model_loaded": interpreter is not None,
         "labels": labels,
         "telegram_ready": bool(TELEGRAM_TOKEN and TELEGRAM_CHAT_ID),
         "time": thai_time()
@@ -103,7 +116,10 @@ def predict():
         if not request.json or "image" not in request.json:
             return jsonify({"error": "No image provided"}), 400
 
-        # Decode Base64 image
+        # Lazy-load interpreter
+        interp = get_interpreter()
+
+        # Decode image
         image_bytes = base64.b64decode(request.json["image"])
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         image = image.resize((INPUT_SIZE, INPUT_SIZE))
@@ -115,9 +131,9 @@ def predict():
         )
 
         # Inference
-        interpreter.set_tensor(input_details[0]["index"], input_data)
-        interpreter.invoke()
-        output = interpreter.get_tensor(output_details[0]["index"])[0]
+        interp.set_tensor(input_details[0]["index"], input_data)
+        interp.invoke()
+        output = interp.get_tensor(output_details[0]["index"])[0]
 
         # Softmax (safe even if already applied)
         exp = np.exp(output - np.max(output))
@@ -144,10 +160,11 @@ def predict():
         })
 
     except Exception as e:
+        print("❌ Prediction error:", str(e))
         return jsonify({"error": str(e)}), 500
 
 # ===============================
-# Run Server
+# Run (Render / Gunicorn)
 # ===============================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
