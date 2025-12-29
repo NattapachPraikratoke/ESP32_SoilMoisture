@@ -63,8 +63,8 @@ def get_interpreter():
 # ===============================
 # Telegram Config
 # ===============================
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+TELEGRAM_TOKEN = os.getenv("8323059048:AAH6K8q48-0wiF-aEnc0Tro0o2s49opVkRs")
+TELEGRAM_CHAT_ID = os.getenv("6423545257")
 
 def thai_time():
     return (datetime.utcnow() + timedelta(hours=7)).strftime("%H:%M:%S")
