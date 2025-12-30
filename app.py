@@ -27,26 +27,20 @@ def load_labels(path):
 labels = load_labels(LABELS_PATH)
 
 # ===============================
-# TensorFlow / TFLite Lazy Loader
+# FORCE TensorFlow TFLite ONLY
 # ===============================
+import tensorflow as tf
+Interpreter = tf.lite.Interpreter
+
 interpreter = None
 input_details = None
 output_details = None
 INPUT_SIZE = None
 
-def load_interpreter():
-    try:
-        import tflite_runtime.interpreter as tflite
-        return tflite.Interpreter
-    except ImportError:
-        import tensorflow as tf
-        return tf.lite.Interpreter
-
 def get_interpreter():
     global interpreter, input_details, output_details, INPUT_SIZE
 
     if interpreter is None:
-        Interpreter = load_interpreter()
         interpreter = Interpreter(model_path=MODEL_PATH)
         interpreter.allocate_tensors()
 
@@ -54,7 +48,7 @@ def get_interpreter():
         output_details = interpreter.get_output_details()
         INPUT_SIZE = input_details[0]["shape"][1]
 
-        print("✅ TFLite model loaded")
+        print("✅ TFLite model loaded using TensorFlow")
         print("📐 Input size:", INPUT_SIZE)
         print("🏷 Labels:", labels)
 
@@ -135,7 +129,7 @@ def predict():
         interp.invoke()
         output = interp.get_tensor(output_details[0]["index"])[0]
 
-        # Softmax (safe even if already applied)
+        # Softmax (safe)
         exp = np.exp(output - np.max(output))
         probs = exp / exp.sum()
 
@@ -164,7 +158,7 @@ def predict():
         return jsonify({"error": str(e)}), 500
 
 # ===============================
-# Run (Render / Gunicorn)
+# Run Server
 # ===============================
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
